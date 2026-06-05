@@ -68,14 +68,26 @@ enum Comparison {
 
     static func line(totalTokens: Int) -> String? {
         guard totalTokens > 0 else { return nil }
-        let base = books[0]   // Pride and Prejudice, matching the desktop app
-        let mult = Double(totalTokens) / Double(base.tokens)
-        if mult >= 1 {
-            let m = mult >= 10 ? String(format: "%.0f", mult) : String(format: "%.0f", mult.rounded())
-            return "You've used ~\(m)× more tokens than \(base.name)."
+        // Pick the largest book where the multiplier falls in [5, 100] — most impressive + readable.
+        // Falls back to largest book with ratio >= 1, then % of smallest book.
+        let sorted = books.sorted { $0.tokens > $1.tokens }
+        let best: Book
+        if let b = sorted.first(where: {
+            let r = Double(totalTokens) / Double($0.tokens); return r >= 5 && r <= 100
+        }) {
+            best = b
+        } else if let b = sorted.first(where: { totalTokens >= $0.tokens }) {
+            best = b
         } else {
-            let pct = Int((mult * 100).rounded())
-            return "You've used ~\(pct)% of the tokens in \(base.name)."
+            best = sorted.last!   // smallest book, show as %
+        }
+        let ratio = Double(totalTokens) / Double(best.tokens)
+        if ratio >= 1 {
+            let m = ratio >= 10 ? String(format: "%.0f", ratio) : String(format: "%.1f", ratio)
+            return "You've used ~\(m)× more tokens than \(best.name)."
+        } else {
+            let pct = Int((ratio * 100).rounded())
+            return "You've used ~\(pct)% of the tokens in \(best.name)."
         }
     }
 }
