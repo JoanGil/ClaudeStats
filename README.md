@@ -115,15 +115,21 @@ Use the time window buttons to scope stats to the last 7 days, 30 days, or all t
 
 ## Raycast integration
 
-A Raycast Script Command is included in `raycast/claude-stats.sh`. It toggles the ClaudeStats popup from Raycast (or any keyboard shortcut you assign).
+A Raycast Script Command is included in `raycast/`. It toggles the ClaudeStats popup with a keyboard shortcut directly from Raycast.
 
-**Setup:**
+**Setup (one time):**
 
-1. Open Raycast → Settings → Extensions → Script Commands → Add Directory
-2. Point it at the `raycast/` folder in this repo (or wherever you cloned it)
-3. The command "Toggle Claude Stats Open/Close" will appear — assign a hotkey for instant access
+1. Clone this repo if you haven't already
+2. Open **Raycast** → `⌘,` → **Extensions** → **Script Commands**
+3. Click **Add Directory** (folder icon, bottom left)
+4. Select the `raycast/` folder inside this repo (e.g. `~/Projects/ClaudeStats/raycast`)
+5. The command **"Toggle Claude Stats Open/Close"** appears in the list
+6. Click the command → assign a keyboard shortcut (e.g. `⌥C`)
+7. Make sure ClaudeStats is running in the menu bar — launch it once from `/Applications` and it stays there
 
-The script uses the `claudestats://toggle` URL scheme registered by the app. The app must be running (it has no dock icon — launch it once from `/Applications` and it lives in the menu bar).
+After setup, pressing your hotkey (or searching "Claude Stats" in Raycast) will open/close the popup instantly.
+
+**How it works:** the script fires `open "claudestats://toggle"` which hits a URL scheme registered by the app. No AppleScript, no automation permissions needed.
 
 ## License
 
