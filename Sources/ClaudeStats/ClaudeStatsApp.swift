@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var clickMonitor: Any?
     private var ready = false
     private var pendingToggle = false
+    private var lastToggle: Date = .distantPast
 
     func applicationDidFinishLaunching(_ note: Notification) {
         // Single-instance guard: quit if another copy is already running
@@ -72,6 +73,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func toggle() {
         guard ready else { pendingToggle = true; return }
+        // Debounce: drop rapid successive calls (URL scheme + launch event race)
+        let now = Date()
+        guard now.timeIntervalSince(lastToggle) > 0.35 else { return }
+        lastToggle = now
         if isOpen { close() } else { show() }
     }
 
@@ -102,13 +107,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.setFrameOrigin(NSPoint(x: x, y: y))
     }
 
-    // MARK: external triggers (Raycast / Finder / Dock)
+    // MARK: external triggers (Raycast / URL scheme)
 
     func application(_ app: NSApplication, open urls: [URL]) { toggle() }
-
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        toggle(); return true
-    }
 
     // MARK: monitors — keyboard + click-outside-to-close
 
