@@ -62,7 +62,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.contentView = host
 
         ready = true
-        if pendingToggle { pendingToggle = false; toggle() } else { show() }
+        if pendingToggle { pendingToggle = false; toggle() } else {
+            // Delay so the status-bar button has a valid window frame before position() runs
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.show() }
+        }
     }
 
     // MARK: toggle / show / close
