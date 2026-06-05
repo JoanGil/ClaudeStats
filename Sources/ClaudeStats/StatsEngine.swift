@@ -83,6 +83,7 @@ struct DayActivity: Identifiable {
     let day: Date
     let tokens: Int
     let messages: Int
+    let costUsd: Double
     var id: Date { day }
 }
 
@@ -109,6 +110,7 @@ struct Stats {
     var spendLimitUsd = 0.0
     var nextReset: Date? = nil
     var calibrated = false
+    var projectedSpendUsd: Double? = nil
     var spendFraction: Double {
         spendLimitUsd > 0 ? min(1, spendUsd / spendLimitUsd) : 0
     }
@@ -270,12 +272,16 @@ final class StatsEngine: ObservableObject {
         var modelToks  = [String: Int]()
         var modelInput = [String: Int]()
         var modelOut   = [String: Int]()
+        var dayCost    = [Date: Double]()
         for r in recs where r.isAssistant {
             guard let m = r.model else { continue }
             modelMsgs[m, default: 0]  += 1
             modelToks[m, default: 0]  += r.tokens
             modelInput[m, default: 0] += r.input
             modelOut[m, default: 0]   += r.output
+            let p = config.price(for: m)
+            dayCost[cal.startOfDay(for: r.date), default: 0] +=
+                (Double(r.input) * p.input + Double(r.output) * p.output) / 1_000_000 * config.factor
         }
         s.models = modelMsgs.keys.map { key in
             let inp  = modelInput[key] ?? 0
@@ -311,7 +317,7 @@ final class StatsEngine: ObservableObject {
         }.sorted { $0.tokens > $1.tokens }
 
         // heatmap
-        s.heatmap = Self.buildHeatmap(recs: recs, window: window, now: now, cal: cal)
+        s.heatmap = Self.buildHeatmap(recs: recs, window: window, now: now, cal: cal, dailyCost: dayCost)
 
         // billing — always from allRecords (not window-scoped)
         let (periodStart, nextReset) = Billing.period(
@@ -327,6 +333,13 @@ final class StatsEngine: ObservableObject {
         s.spendLimitUsd = config.spendLimitUsd
         s.nextReset    = nextReset
         s.calibrated   = config.calibration != nil
+
+        // spend projection: extrapolate daily rate to end of billing period
+        if s.spendUsd > 0 {
+            let daysPassed   = max(1, cal.dateComponents([.day], from: periodStart, to: now).day ?? 1)
+            let daysInPeriod = max(1, cal.dateComponents([.day], from: periodStart, to: nextReset).day ?? 1)
+            s.projectedSpendUsd = (s.spendUsd / Double(daysPassed)) * Double(daysInPeriod)
+        }
 
         self.stats = s
     }
@@ -359,7 +372,7 @@ final class StatsEngine: ObservableObject {
         return (current, longest)
     }
 
-    nonisolated private static func buildHeatmap(recs: [MsgRecord], window: TimeWindow, now: Date, cal: Calendar) -> [DayActivity] {
+    nonisolated private static func buildHeatmap(recs: [MsgRecord], window: TimeWindow, now: Date, cal: Calendar, dailyCost: [Date: Double]) -> [DayActivity] {
         let today = cal.startOfDay(for: now)
         let start: Date
         switch window {
@@ -380,7 +393,7 @@ final class StatsEngine: ObservableObject {
         var out: [DayActivity] = []
         var cur = start
         while cur <= today {
-            out.append(DayActivity(day: cur, tokens: toks[cur] ?? 0, messages: msgs[cur] ?? 0))
+            out.append(DayActivity(day: cur, tokens: toks[cur] ?? 0, messages: msgs[cur] ?? 0, costUsd: dailyCost[cur] ?? 0))
             cur = cal.date(byAdding: .day, value: 1, to: cur)!
         }
         return out

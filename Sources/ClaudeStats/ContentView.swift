@@ -1,4 +1,5 @@
 import SwiftUI
+import ServiceManagement
 
 enum Tab { case overview, models, projects }
 
@@ -12,6 +13,7 @@ struct ContentView: View {
     @ObservedObject var ui: UIState
     @State private var calibrating = false
     @State private var realText = ""
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     private var tab: Tab { ui.tab }
 
@@ -35,7 +37,7 @@ struct ContentView: View {
                     projects
                 }
             }
-            .frame(height: 390, alignment: .top)
+            .frame(height: 470, alignment: .top)
             footer
         }
         .padding(16)
@@ -112,6 +114,7 @@ struct ContentView: View {
                 CompactModels(models: s.models)
             }
             .padding(.top, 4)
+            CostTrendChart(days: s.heatmap)
             if let line = Comparison.line(totalTokens: s.totalTokens) {
                 Text(line)
                     .font(.system(size: 12))
@@ -190,6 +193,9 @@ struct ContentView: View {
                     Image(systemName: "slider.horizontal.3")
                 }.buttonStyle(.plain).help("Calibrate to real spend")
             }
+            Button { toggleLogin() } label: {
+                Image(systemName: launchAtLogin ? "house.fill" : "house")
+            }.buttonStyle(.plain).help(launchAtLogin ? "Open at login: on — click to disable" : "Open at login: off — click to enable")
             Button { engine.refresh() } label: {
                 Image(systemName: "arrow.clockwise")
             }.buttonStyle(.plain).help("Refresh")
@@ -197,6 +203,12 @@ struct ContentView: View {
                 Image(systemName: "power")
             }.buttonStyle(.plain).help("Quit")
         }
+    }
+
+    private func toggleLogin() {
+        if launchAtLogin { try? SMAppService.mainApp.unregister() }
+        else              { try? SMAppService.mainApp.register()   }
+        launchAtLogin = SMAppService.mainApp.status == .enabled
     }
 
     private func applyCalibration() {

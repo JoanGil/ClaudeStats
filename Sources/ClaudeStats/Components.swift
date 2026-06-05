@@ -133,6 +133,16 @@ struct UsageLimitsPanel: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 64, alignment: .trailing)
             }
+            if let proj = stats.projectedSpendUsd, stats.spendLimitUsd > 0 {
+                HStack {
+                    Text("Projected by reset: ~\(usd(proj))")
+                    Spacer()
+                    Text("~\(Int((proj / stats.spendLimitUsd * 100).rounded()))% of limit")
+                        .foregroundStyle(proj > stats.spendLimitUsd ? .red : .secondary)
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            }
             Text(stats.calibrated
                  ? "Calibrated estimate from local tokens · ~/.claude/claude-stats-config.json"
                  : "Estimated from local tokens (uncalibrated) · ~/.claude/claude-stats-config.json")
@@ -181,6 +191,64 @@ struct CompactModels: View {
             }
         }
         .frame(width: 150, alignment: .leading)
+    }
+}
+
+/// Daily (or weekly) cost bar chart shown in the Overview tab.
+struct CostTrendChart: View {
+    let days: [DayActivity]
+
+    private struct Bar: Identifiable {
+        let id: Date
+        let cost: Double
+        let label: String
+    }
+
+    private var bars: [Bar] {
+        guard !days.isEmpty else { return [] }
+        if days.count <= 62 {
+            let df = DateFormatter(); df.dateFormat = "MMM d"
+            return days.map { Bar(id: $0.day, cost: $0.costUsd, label: df.string(from: $0.day)) }
+        }
+        // Aggregate by week for long ranges
+        let cal = Calendar.current
+        var groups: [Date: Double] = [:]
+        for d in days {
+            let week = cal.dateInterval(of: .weekOfYear, for: d.day)?.start ?? d.day
+            groups[week, default: 0] += d.costUsd
+        }
+        let df = DateFormatter(); df.dateFormat = "MMM d"
+        return groups.keys.sorted().map { Bar(id: $0, cost: groups[$0]!, label: "w/o \(df.string(from: $0))") }
+    }
+
+    private var maxCost: Double { bars.map(\.cost).max() ?? 1 }
+    private var total: Double   { bars.map(\.cost).reduce(0, +) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("COST TREND")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                Text(String(format: "Total: $%.2f", total))
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+            }
+            HStack(alignment: .bottom, spacing: 2) {
+                ForEach(bars) { bar in
+                    let frac = CGFloat(maxCost > 0 ? bar.cost / maxCost : 0)
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(bar.cost > 0
+                            ? Color.accentColor.opacity(0.3 + Double(frac) * 0.7)
+                            : Color.primary.opacity(0.06))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: max(2, frac * 46))
+                        .help(bar.cost > 0 ? "\(bar.label): \(String(format: "$%.3f", bar.cost))" : "")
+                }
+            }
+            .frame(height: 48, alignment: .bottom)
+        }
     }
 }
 
