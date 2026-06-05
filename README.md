@@ -97,6 +97,8 @@ Click the menu-bar icon to open the popup. The app reads `~/.claude/projects/**/
 
 | Shortcut | Action |
 |----------|--------|
+| `←` `↑`  | Switch to Overview tab |
+| `→` `↓`  | Switch to Models tab |
 | `O`      | Switch to Overview tab |
 | `M`      | Switch to Models tab |
 | `1` `2` `3` | Switch time window (7d / 30d / All) |
