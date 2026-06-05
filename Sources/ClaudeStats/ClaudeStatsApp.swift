@@ -109,7 +109,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: external triggers (Raycast / URL scheme)
 
-    func application(_ app: NSApplication, open urls: [URL]) { toggle() }
+    func application(_ app: NSApplication, open urls: [URL]) {
+        // Small delay: lets the status-bar button acquire its window frame before position()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.toggle() }
+    }
 
     // MARK: monitors — keyboard + click-outside-to-close
 
@@ -144,15 +147,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
-        // close when clicking anywhere outside the panel (but let the icon toggle itself)
-        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            guard let self else { return }
-            let mouse = NSEvent.mouseLocation
-            if let b = self.statusItem.button, let bw = b.window {
-                let btn = bw.convertToScreen(b.convert(b.bounds, to: nil))
-                if btn.contains(mouse) { return }   // icon click → buttonClicked handles toggle
+        // Delay click-outside monitor: prevents the click that opened us (e.g. Raycast mouseDown)
+        // from firing the monitor and immediately closing the panel.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self, self.isOpen else { return }
+            self.clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+                guard let self else { return }
+                let mouse = NSEvent.mouseLocation
+                if let b = self.statusItem.button, let bw = b.window {
+                    let btn = bw.convertToScreen(b.convert(b.bounds, to: nil))
+                    if btn.contains(mouse) { return }   // icon click → buttonClicked handles toggle
+                }
+                self.close()
             }
-            self.close()
         }
     }
 
