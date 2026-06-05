@@ -2,7 +2,7 @@
 
 A macOS menu-bar app that reads your local Claude Code session files and shows how much you've used — and what it's costing you.
 
-![ClaudeStats menu bar popup](https://github.com/JoanGil/ClaudeStats/raw/main/screenshot.png)
+<img src="https://github.com/JoanGil/ClaudeStats/raw/main/screenshot.png" width="400" />
 
 ## Why
 
