@@ -13,6 +13,7 @@ Claude Code writes every conversation to JSONL files under `~/.claude/projects/`
 **Usage limits panel** (always visible)
 - Estimated spend for the current billing period vs your plan limit
 - Progress bar + % used, next reset date
+- **Spend projection**: extrapolates your daily burn rate to the end of the billing period — turns red if you're on track to exceed the limit
 
 **Overview tab**
 - Sessions, messages, total tokens, active days
@@ -20,7 +21,8 @@ Claude Code writes every conversation to JSONL files under `~/.claude/projects/`
 - Output % — fraction of tokens that are Claude's responses vs context
 - Current and longest daily streaks, peak coding hour, favourite model
 - Activity heatmap (7d / 30d / all-time) with compact model breakdown
-- Fun comparison: how many times your token usage equals *Pride and Prejudice*
+- **Cost trend chart**: daily bar chart of spend for the selected window; aggregates to weekly for long ranges; hover any bar for date + cost
+- Fun comparison: token usage vs a classic novel — picks the largest book where the multiplier lands in a readable range, so it upgrades as you use more (Gatsby → Hobbit → Moby-Dick → War and Peace)
 
 **Models tab**
 - Per-model cost estimate, token bar with input/output gradient split
@@ -112,6 +114,15 @@ Click the menu-bar icon to open the popup. The app reads `~/.claude/projects/**/
 | `Esc`    | Close popup |
 
 Use the time window buttons to scope stats to the last 7 days, 30 days, or all time. Billing-period spend is always calculated from the full history regardless of the selected window.
+
+### Footer buttons
+
+| Button | Action |
+|--------|--------|
+| `⊟` (sliders) | Calibrate estimated spend to your real Anthropic bill |
+| `⌂` (house) | Toggle **open at login** — filled when enabled |
+| `↺` (refresh) | Re-read session files immediately |
+| `⏻` (power) | Quit |
 
 ## Raycast integration
 
