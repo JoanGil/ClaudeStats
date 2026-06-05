@@ -103,7 +103,7 @@ struct ContentView: View {
                 CompactModels(models: s.models)
             }
             .padding(.top, 4)
-            if let line = Comparison.line(totalTokens: s.totalTokens) {
+            if let line = Comparison.line(totalTokens: s.allTimeTokens) {
                 Text(line)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)

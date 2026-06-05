@@ -80,6 +80,7 @@ struct Stats {
     var sessions = 0
     var messages = 0
     var totalTokens = 0
+    var allTimeTokens = 0
     var activeDays = 0
     var currentStreak = 0
     var longestStreak = 0
@@ -195,6 +196,7 @@ final class StatsEngine: ObservableObject {
         var s = Stats()
         s.messages = recs.count
         s.totalTokens = recs.reduce(0) { $0 + $1.tokens }
+        s.allTimeTokens = allRecords.reduce(0) { $0 + $1.tokens }
 
         // sessions
         s.sessions = Set(recs.map { $0.sessionId }).count
