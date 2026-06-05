@@ -104,6 +104,18 @@ Click the menu-bar icon to open the popup. The app reads `~/.claude/projects/**/
 
 Use the time window buttons to scope stats to the last 7 days, 30 days, or all time. Billing-period spend is always calculated from the full history regardless of the selected window.
 
+## Raycast integration
+
+A Raycast Script Command is included in `raycast/claude-stats.sh`. It toggles the ClaudeStats popup from Raycast (or any keyboard shortcut you assign).
+
+**Setup:**
+
+1. Open Raycast → Settings → Extensions → Script Commands → Add Directory
+2. Point it at the `raycast/` folder in this repo (or wherever you cloned it)
+3. The command "Claude Stats" will appear — assign a hotkey if you want instant access
+
+The script uses the `claudestats://toggle` URL scheme registered by the app. The app must be running (it has no dock icon — launch it once from `/Applications` and it lives in the menu bar).
+
 ## License
 
 MIT
