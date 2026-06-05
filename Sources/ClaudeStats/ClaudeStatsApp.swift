@@ -114,14 +114,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             switch event.charactersIgnoringModifiers?.lowercased() {
             case "o": self.ui.tab = .overview;  return nil
             case "m": self.ui.tab = .models;    return nil
+            case "p": self.ui.tab = .projects;  return nil
             case "1": self.engine.window = .all; return nil
             case "2": self.engine.window = .d30; return nil
             case "3": self.engine.window = .d7;  return nil
             default:
+                let tabOrder: [Tab] = [.overview, .models, .projects]
                 switch event.keyCode {
                 case 53: self.close(); return nil                       // esc
-                case 123, 126: self.ui.tab = .overview; return nil      // left / up
-                case 124, 125: self.ui.tab = .models;   return nil      // right / down
+                case 123, 126:                                          // left / up → prev tab
+                    if let i = tabOrder.firstIndex(of: self.ui.tab), i > 0 {
+                        self.ui.tab = tabOrder[i - 1]
+                    }
+                    return nil
+                case 124, 125:                                          // right / down → next tab
+                    if let i = tabOrder.firstIndex(of: self.ui.tab), i < tabOrder.count - 1 {
+                        self.ui.tab = tabOrder[i + 1]
+                    }
+                    return nil
                 default: return event
                 }
             }

@@ -35,13 +35,11 @@ struct Heatmap: View {
     private var maxTokens: Int { max(days.map { $0.tokens }.max() ?? 0, 1) }
 
     private var columns: [[DayActivity?]] {
-        // pad front so first column aligns weekday (Sun=0 row)
         let cal = Calendar.current
         guard let first = days.first else { return [] }
-        let lead = (cal.component(.weekday, from: first.day) - 1) // 0..6
+        let lead = (cal.component(.weekday, from: first.day) - 1)
         var padded: [DayActivity?] = Array(repeating: nil, count: lead)
         padded.append(contentsOf: days.map { Optional($0) })
-        // pad tail to full weeks
         while padded.count % rows != 0 { padded.append(nil) }
         return stride(from: 0, to: padded.count, by: rows).map {
             Array(padded[$0..<min($0 + rows, padded.count)])
@@ -51,7 +49,6 @@ struct Heatmap: View {
     private func color(_ t: Int) -> Color {
         guard t > 0 else { return Color.primary.opacity(0.08) }
         let ratio = Double(t) / Double(maxTokens)
-        // blue scale like the desktop app
         let intensity = 0.25 + 0.75 * min(1, sqrt(ratio))
         return Color.accentColor.opacity(intensity)
     }
@@ -60,7 +57,6 @@ struct Heatmap: View {
         let cols = columns
         return GeometryReader { geo in
             let n = max(cols.count, 1)
-            // size cells so every column fits the available width
             let fit = (geo.size.width - gap * CGFloat(n - 1)) / CGFloat(n)
             let cell = min(maxCell, max(minCell, fit))
             HStack(alignment: .top, spacing: gap) {
@@ -152,7 +148,7 @@ struct UsageLimitsPanel: View {
     }
 }
 
-/// Compact per-model token share, shown beside the heatmap on the Overview.
+/// Compact per-model token share beside the heatmap on Overview.
 struct CompactModels: View {
     let models: [ModelUsage]
 
@@ -188,29 +184,92 @@ struct CompactModels: View {
     }
 }
 
+/// Model row with gradient split bar (bright = input/context, dim = output/generation).
 struct ModelBar: View {
     let usage: ModelUsage
     let maxTokens: Int
 
+    private var inputFrac: Double {
+        let total = usage.input + usage.output
+        return total > 0 ? Double(usage.input) / Double(total) : 0.5
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text(Fmt.modelLabel(usage.model))
                     .font(.system(size: 13, weight: .medium))
                 Spacer()
-                Text("\(Fmt.compact(usage.tokens)) tok · \(Fmt.grouped(usage.messages)) msgs")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                Text(String(format: "$%.2f", usage.costUsd))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.primary)
             }
+            // bar width = proportion of max; colour split = input (bright) / output (dim)
             GeometryReader { geo in
-                let w = maxTokens > 0 ? CGFloat(usage.tokens) / CGFloat(maxTokens) : 0
+                let barW = max(6, geo.size.width * CGFloat(usage.tokens) / CGFloat(maxTokens))
+                let gradient = LinearGradient(
+                    stops: [
+                        .init(color: .accentColor,                  location: 0),
+                        .init(color: .accentColor,                  location: inputFrac),
+                        .init(color: .accentColor.opacity(0.4),     location: inputFrac),
+                        .init(color: .accentColor.opacity(0.4),     location: 1)
+                    ],
+                    startPoint: .leading, endPoint: .trailing
+                )
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 4).fill(Color.primary.opacity(0.08))
-                    RoundedRectangle(cornerRadius: 4).fill(Color.accentColor)
+                    RoundedRectangle(cornerRadius: 4).fill(gradient).frame(width: barW)
+                }
+            }
+            .frame(height: 8)
+            HStack(spacing: 0) {
+                Text("↑ \(Fmt.compact(usage.input)) in")
+                    .foregroundStyle(.secondary)
+                Text("  ·  ").foregroundStyle(.tertiary)
+                Text("↓ \(Fmt.compact(usage.output)) out")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(Fmt.grouped(usage.messages)) msgs")
+                    .foregroundStyle(.tertiary)
+            }
+            .font(.system(size: 10))
+        }
+    }
+}
+
+/// Project row with token bar and cost.
+struct ProjectRow: View {
+    let project: ProjectUsage
+    let maxTokens: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Text(project.name)
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+                Text(String(format: "$%.2f", project.costUsd))
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            GeometryReader { geo in
+                let w = maxTokens > 0 ? CGFloat(project.tokens) / CGFloat(maxTokens) : 0
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4).fill(Color.primary.opacity(0.08))
+                    RoundedRectangle(cornerRadius: 4).fill(Color.accentColor.opacity(0.75))
                         .frame(width: max(6, geo.size.width * w))
                 }
             }
             .frame(height: 8)
+            HStack(spacing: 0) {
+                Text("\(Fmt.compact(project.tokens)) tokens")
+                    .foregroundStyle(.secondary)
+                Text("  ·  ").foregroundStyle(.tertiary)
+                Text("\(project.sessions) \(project.sessions == 1 ? "session" : "sessions")")
+                    .foregroundStyle(.secondary)
+            }
+            .font(.system(size: 10))
         }
     }
 }

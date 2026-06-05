@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-// MARK: - Raw JSONL decoding (only fields we need)
+// MARK: - Raw JSONL decoding
 
 private struct RawEntry: Decodable {
     let type: String?
@@ -24,22 +24,21 @@ private struct RawUsage: Decodable {
     let cache_read_input_tokens: Int?
 
     // Matches Claude Desktop's "Total tokens": input + output only.
-    // Cache read/write tokens are excluded (they dwarf real usage ~80×).
-    var total: Int {
-        (input_tokens ?? 0) + (output_tokens ?? 0)
-    }
+    // Cache read/write tokens excluded (they dwarf real usage ~80×).
+    var total: Int { (input_tokens ?? 0) + (output_tokens ?? 0) }
 }
 
-// MARK: - Lightweight per-message record
+// MARK: - Per-message record
 
 struct MsgRecord {
     let date: Date
-    let model: String?      // nil for user messages
-    let tokens: Int         // input + output (display metric)
+    let model: String?
+    let tokens: Int
     let input: Int
     let output: Int
     let isAssistant: Bool
     let sessionId: String
+    let projectDir: String   // encoded dir under ~/.claude/projects/, worktree suffix stripped
 }
 
 // MARK: - Time window
@@ -50,7 +49,6 @@ enum TimeWindow: String, CaseIterable, Identifiable {
     case d7 = "7d"
     var id: String { rawValue }
 
-    /// Earliest date included, or nil for all-time.
     func cutoff(now: Date) -> Date? {
         switch self {
         case .all: return nil
@@ -60,17 +58,29 @@ enum TimeWindow: String, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - Computed stats
+// MARK: - Computed stats models
 
 struct ModelUsage: Identifiable {
     let model: String
     let messages: Int
     let tokens: Int
+    let input: Int
+    let output: Int
+    let costUsd: Double
     var id: String { model }
 }
 
+struct ProjectUsage: Identifiable {
+    let name: String      // humanized display name
+    let dirKey: String    // raw encoded dir (unique key)
+    let sessions: Int
+    let tokens: Int
+    let costUsd: Double
+    var id: String { dirKey }
+}
+
 struct DayActivity: Identifiable {
-    let day: Date          // start of day
+    let day: Date
     let tokens: Int
     let messages: Int
     var id: Date { day }
@@ -80,19 +90,22 @@ struct Stats {
     var sessions = 0
     var messages = 0
     var totalTokens = 0
-    var allTimeTokens = 0
+    var tokensToday = 0
+    var avgTokensPerSession = 0
+    var avgTokensPerDay = 0
+    var outputRatio = 0.0       // output / (input + output) for assistant messages
     var activeDays = 0
     var currentStreak = 0
     var longestStreak = 0
     var peakHour: Int? = nil
     var favoriteModel: String? = nil
     var models: [ModelUsage] = []
-    var heatmap: [DayActivity] = []     // ascending by day
+    var projects: [ProjectUsage] = []
+    var heatmap: [DayActivity] = []
 
-    // Billing (current period, independent of the window toggle)
     var planLabel = "Enterprise"
     var spendUsd = 0.0
-    var rawSpendUsd = 0.0          // before calibration factor (list price)
+    var rawSpendUsd = 0.0
     var spendLimitUsd = 0.0
     var nextReset: Date? = nil
     var calibrated = false
@@ -119,8 +132,7 @@ final class StatsEngine: ObservableObject {
             .appendingPathComponent(".claude/projects")
     }()
 
-    /// Re-anchor the calibration factor to a fresh real-spend reading.
-    /// Captures the current period raw (list price) so factor = real / raw.
+
     func calibrate(toReal real: Double) {
         guard real > 0, stats.rawSpendUsd > 0 else { return }
         config.calibration = Calibration(realUsd: real, rawUsd: stats.rawSpendUsd)
@@ -130,7 +142,7 @@ final class StatsEngine: ObservableObject {
 
     func refresh() {
         loading = true
-        config = AppConfig.load()   // pick up edits to the config file
+        config = AppConfig.load()
         let dir = projectsDir
         Task.detached(priority: .userInitiated) {
             let records = Self.scan(dir: dir)
@@ -143,7 +155,7 @@ final class StatsEngine: ObservableObject {
         }
     }
 
-    // MARK: parsing
+    // MARK: - Parsing
 
     nonisolated private static func scan(dir: URL) -> [MsgRecord] {
         let fm = FileManager.default
@@ -156,6 +168,13 @@ final class StatsEngine: ObservableObject {
 
         var out: [MsgRecord] = []
         for case let url as URL in en where url.pathExtension == "jsonl" {
+            // project dir = immediate child of ~/.claude/projects/; strip worktree suffix so
+            // worktrees are grouped under their parent project
+            var projectDir = url.deletingLastPathComponent().lastPathComponent
+            if let r = projectDir.range(of: "--claude-worktrees") {
+                projectDir = String(projectDir[..<r.lowerBound])
+            }
+
             guard let data = try? Data(contentsOf: url),
                   let text = String(data: data, encoding: .utf8) else { continue }
             text.enumerateLines { line, _ in
@@ -177,26 +196,46 @@ final class StatsEngine: ObservableObject {
                     input: input,
                     output: output,
                     isAssistant: isAssistant,
-                    sessionId: sid
+                    sessionId: sid,
+                    projectDir: projectDir
                 ))
             }
         }
         return out
     }
 
-    // MARK: aggregation
+    // MARK: - Project display name
+
+    nonisolated private static func displayName(forDir dir: String) -> String {
+        var s = dir
+        // strip worktree suffix (already stripped in scan, but defensive)
+        if let r = s.range(of: "--claude-worktrees") { s = String(s[..<r.lowerBound]) }
+        // strip leading -
+        if s.hasPrefix("-") { s = String(s.dropFirst()) }
+        // strip encoded home prefix (e.g. "Users-joan-gil-")
+        if s.hasPrefix(_homePrefix) { s = String(s.dropFirst(_homePrefix.count)) }
+        if s.isEmpty { return "Home" }
+        // replace remaining - with / to recover approximate path structure
+        return s.replacingOccurrences(of: "-", with: "/")
+    }
+
+    // MARK: - Aggregation
 
     private func recompute() {
         let now = Date()
         let cutoff = window.cutoff(now: now)
         let cal = Calendar.current
+        let today = cal.startOfDay(for: now)
 
         let recs = cutoff == nil ? allRecords : allRecords.filter { $0.date >= cutoff! }
 
         var s = Stats()
         s.messages = recs.count
         s.totalTokens = recs.reduce(0) { $0 + $1.tokens }
-        s.allTimeTokens = allRecords.reduce(0) { $0 + $1.tokens }
+
+        // tokens today (always from current day, not window-affected in practice)
+        s.tokensToday = recs.filter { cal.startOfDay(for: $0.date) == today }
+                            .reduce(0) { $0 + $1.tokens }
 
         // sessions
         s.sessions = Set(recs.map { $0.sessionId }).count
@@ -205,35 +244,76 @@ final class StatsEngine: ObservableObject {
         let dayKeys = Set(recs.map { cal.startOfDay(for: $0.date) })
         s.activeDays = dayKeys.count
 
+        // averages
+        s.avgTokensPerSession = s.sessions > 0 ? s.totalTokens / s.sessions : 0
+        s.avgTokensPerDay = s.activeDays > 0 ? s.totalTokens / s.activeDays : 0
+
         // streaks
         let sortedDays = dayKeys.sorted()
         (s.currentStreak, s.longestStreak) = Self.streaks(days: sortedDays, now: now, cal: cal)
 
-        // peak hour (by message count)
+        // peak hour
         if !recs.isEmpty {
             var hourCounts = [Int: Int]()
             for r in recs { hourCounts[cal.component(.hour, from: r.date), default: 0] += 1 }
             s.peakHour = hourCounts.max { a, b in a.value < b.value }?.key
         }
 
+        // output ratio: what fraction of tokens are Claude's actual responses vs context
+        let assistantRecs = recs.filter { $0.isAssistant }
+        let totalOut = assistantRecs.reduce(0) { $0 + $1.output }
+        let totalAssistant = assistantRecs.reduce(0) { $0 + $1.tokens }
+        s.outputRatio = totalAssistant > 0 ? Double(totalOut) / Double(totalAssistant) : 0
+
         // models (assistant only)
-        var modelMsgs = [String: Int]()
-        var modelToks = [String: Int]()
+        var modelMsgs  = [String: Int]()
+        var modelToks  = [String: Int]()
+        var modelInput = [String: Int]()
+        var modelOut   = [String: Int]()
         for r in recs where r.isAssistant {
             guard let m = r.model else { continue }
-            modelMsgs[m, default: 0] += 1
-            modelToks[m, default: 0] += r.tokens
+            modelMsgs[m, default: 0]  += 1
+            modelToks[m, default: 0]  += r.tokens
+            modelInput[m, default: 0] += r.input
+            modelOut[m, default: 0]   += r.output
         }
-        s.models = modelMsgs.keys.map {
-            ModelUsage(model: $0, messages: modelMsgs[$0] ?? 0, tokens: modelToks[$0] ?? 0)
+        s.models = modelMsgs.keys.map { key in
+            let inp  = modelInput[key] ?? 0
+            let out  = modelOut[key] ?? 0
+            let p    = config.price(for: key)
+            let cost = (Double(inp) * p.input + Double(out) * p.output) / 1_000_000 * config.factor
+            return ModelUsage(model: key, messages: modelMsgs[key] ?? 0,
+                              tokens: modelToks[key] ?? 0, input: inp, output: out, costUsd: cost)
         }.sorted { $0.tokens > $1.tokens }
         s.favoriteModel = s.models.max { $0.messages < $1.messages }?.model
+
+        // projects
+        var projToks     = [String: Int]()
+        var projSessions = [String: Set<String>]()
+        var projCost     = [String: Double]()
+        for r in recs {
+            let k = r.projectDir
+            projSessions[k, default: Set()].insert(r.sessionId)
+            if r.isAssistant {
+                projToks[k, default: 0] += r.tokens
+                let p = config.price(for: r.model)
+                projCost[k, default: 0] += (Double(r.input) * p.input + Double(r.output) * p.output) / 1_000_000
+            }
+        }
+        s.projects = projToks.keys.map { k in
+            ProjectUsage(
+                name: Self.displayName(forDir: k),
+                dirKey: k,
+                sessions: projSessions[k]?.count ?? 0,
+                tokens: projToks[k] ?? 0,
+                costUsd: (projCost[k] ?? 0) * config.factor
+            )
+        }.sorted { $0.tokens > $1.tokens }
 
         // heatmap
         s.heatmap = Self.buildHeatmap(recs: recs, window: window, now: now, cal: cal)
 
-        // billing — current period, ALWAYS (not affected by window toggle).
-        // cost = Σ (input×inPrice + output×outPrice); cache tokens excluded; × calibration factor.
+        // billing — always from allRecords (not window-scoped)
         let (periodStart, nextReset) = Billing.period(
             now: now, resetDay: config.resetDayOfMonth, resetHour: config.resetHour, cal: cal)
         var raw = 0.0
@@ -241,12 +321,12 @@ final class StatsEngine: ObservableObject {
             let p = config.price(for: r.model)
             raw += (Double(r.input) * p.input + Double(r.output) * p.output) / 1_000_000.0
         }
-        s.planLabel = config.planLabel
-        s.rawSpendUsd = raw
-        s.spendUsd = raw * config.factor
+        s.planLabel    = config.planLabel
+        s.rawSpendUsd  = raw
+        s.spendUsd     = raw * config.factor
         s.spendLimitUsd = config.spendLimitUsd
-        s.nextReset = nextReset
-        s.calibrated = config.calibration != nil
+        s.nextReset    = nextReset
+        s.calibrated   = config.calibration != nil
 
         self.stats = s
     }
@@ -264,13 +344,11 @@ final class StatsEngine: ObservableObject {
             }
             longest = max(longest, run)
         }
-        // current streak: count back from today (or yesterday) through consecutive days
         let today = cal.startOfDay(for: now)
         let set = Set(days)
         var current = 0
         var cursor = today
         if !set.contains(today) {
-            // allow streak that ended yesterday to still count if today not yet active
             cursor = cal.date(byAdding: .day, value: -1, to: today)!
             if !set.contains(cursor) { return (0, longest) }
         }
@@ -285,19 +363,14 @@ final class StatsEngine: ObservableObject {
         let today = cal.startOfDay(for: now)
         let start: Date
         switch window {
-        case .d7:
-            start = cal.date(byAdding: .day, value: -6, to: today)!
-        case .d30:
-            start = cal.date(byAdding: .day, value: -34, to: today)! // 5 weeks
+        case .d7:  start = cal.date(byAdding: .day, value: -6, to: today)!
+        case .d30: start = cal.date(byAdding: .day, value: -34, to: today)!
         case .all:
-            // span from earliest record to today, capped at 53 weeks
             let earliest = recs.map { cal.startOfDay(for: $0.date) }.min() ?? today
             let cap = cal.date(byAdding: .day, value: -370, to: today)!
             start = max(earliest, cap)
         }
-
-        var toks = [Date: Int]()
-        var msgs = [Date: Int]()
+        var toks = [Date: Int](); var msgs = [Date: Int]()
         for r in recs {
             let d = cal.startOfDay(for: r.date)
             guard d >= start else { continue }
@@ -313,6 +386,16 @@ final class StatsEngine: ObservableObject {
         return out
     }
 }
+
+// File-level constant: avoids @MainActor isolation issues when accessed from nonisolated funcs.
+private let _homePrefix: String = {
+    let path = FileManager.default.homeDirectoryForCurrentUser.path
+    let encoded = path
+        .replacingOccurrences(of: "/", with: "-")
+        .replacingOccurrences(of: ".", with: "-")
+    let stripped = encoded.hasPrefix("-") ? String(encoded.dropFirst()) : encoded
+    return stripped + "-"
+}()
 
 private extension FileManager {
     var homeDirectoryForUserURL: URL { homeDirectoryForCurrentUser }

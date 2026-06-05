@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum Tab { case overview, models }
+enum Tab { case overview, models, projects }
 
 @MainActor
 final class UIState: ObservableObject {
@@ -29,24 +29,27 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity)
                 } else if tab == .overview {
                     overview
-                } else {
+                } else if tab == .models {
                     models
+                } else {
+                    projects
                 }
             }
-            .frame(height: 340, alignment: .top)   // fixed so switching tabs doesn't resize/shift
+            .frame(height: 390, alignment: .top)
             footer
         }
         .padding(16)
         .frame(width: 540)
     }
 
-    // MARK: header (tabs + window toggle)
+    // MARK: - Header
 
     private var header: some View {
         HStack {
             HStack(spacing: 4) {
-                tabButton("Overview", .overview)
-                tabButton("Models", .models)
+                tabButton("Overview",  .overview)
+                tabButton("Models",    .models)
+                tabButton("Projects",  .projects)
             }
             Spacer()
             HStack(spacing: 2) {
@@ -69,9 +72,8 @@ struct ContentView: View {
     }
 
     private func tabButton(_ title: String, _ t: Tab) -> some View {
-        // underline the first letter to hint its keyboard shortcut (o / m)
         let first = Text(String(title.prefix(1))).underline()
-        let rest = Text(String(title.dropFirst()))
+        let rest  = Text(String(title.dropFirst()))
         return Button(action: { ui.tab = t }) { first + rest }
             .buttonStyle(.plain)
             .padding(.horizontal, 12).padding(.vertical, 6)
@@ -82,20 +84,27 @@ struct ContentView: View {
             .font(.system(size: 14, weight: tab == t ? .semibold : .regular))
     }
 
-    // MARK: overview
+    // MARK: - Overview
 
     private var overview: some View {
         let s = engine.stats
         return VStack(alignment: .leading, spacing: 12) {
             LazyVGrid(columns: cols, spacing: 10) {
-                StatTile(title: "Sessions", value: Fmt.grouped(s.sessions))
-                StatTile(title: "Messages", value: Fmt.grouped(s.messages))
+                // row 1: activity
+                StatTile(title: "Sessions",     value: Fmt.grouped(s.sessions))
+                StatTile(title: "Messages",     value: Fmt.grouped(s.messages))
                 StatTile(title: "Total tokens", value: Fmt.compact(s.totalTokens))
-                StatTile(title: "Active days", value: "\(s.activeDays)")
-                StatTile(title: "Current streak", value: "\(s.currentStreak)d")
-                StatTile(title: "Longest streak", value: "\(s.longestStreak)d")
-                StatTile(title: "Peak hour", value: s.peakHour.map(Fmt.hour) ?? "—")
-                StatTile(title: "Favorite model", value: s.favoriteModel.map(Fmt.modelLabel) ?? "—")
+                StatTile(title: "Active days",  value: "\(s.activeDays)")
+                // row 2: depth
+                StatTile(title: "Tokens today", value: Fmt.compact(s.tokensToday))
+                StatTile(title: "Avg/session",  value: Fmt.compact(s.avgTokensPerSession))
+                StatTile(title: "Avg/day",      value: Fmt.compact(s.avgTokensPerDay))
+                StatTile(title: "Output %",     value: "\(Int((s.outputRatio * 100).rounded()))%")
+                // row 3: streaks + model
+                StatTile(title: "Current streak",  value: "\(s.currentStreak)d")
+                StatTile(title: "Longest streak",  value: "\(s.longestStreak)d")
+                StatTile(title: "Peak hour",       value: s.peakHour.map(Fmt.hour) ?? "—")
+                StatTile(title: "Favorite model",  value: s.favoriteModel.map(Fmt.modelLabel) ?? "—")
             }
             HStack(alignment: .top, spacing: 14) {
                 Heatmap(days: s.heatmap)
@@ -103,7 +112,7 @@ struct ContentView: View {
                 CompactModels(models: s.models)
             }
             .padding(.top, 4)
-            if let line = Comparison.line(totalTokens: s.allTimeTokens) {
+            if let line = Comparison.line(totalTokens: s.totalTokens) {
                 Text(line)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
@@ -111,7 +120,7 @@ struct ContentView: View {
         }
     }
 
-    // MARK: models
+    // MARK: - Models
 
     private var models: some View {
         let s = engine.stats
@@ -132,7 +141,28 @@ struct ContentView: View {
         .frame(minHeight: 220)
     }
 
-    // MARK: footer
+    // MARK: - Projects
+
+    private var projects: some View {
+        let s = engine.stats
+        let maxT = s.projects.first?.tokens ?? 1
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                if s.projects.isEmpty {
+                    Text("No project data in this window.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(s.projects) { p in
+                        ProjectRow(project: p, maxTokens: maxT)
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+        }
+        .frame(minHeight: 220)
+    }
+
+    // MARK: - Footer
 
     private var footer: some View {
         HStack(spacing: 8) {
