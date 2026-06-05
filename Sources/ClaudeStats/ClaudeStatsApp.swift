@@ -62,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.contentView = host
 
         ready = true
-        if pendingToggle { pendingToggle = false; toggle() }
+        if pendingToggle { pendingToggle = false; toggle() } else { show() }
     }
 
     // MARK: toggle / show / close
