@@ -10,19 +10,25 @@ Claude Code writes every conversation to JSONL files under `~/.claude/projects/`
 
 ## What it shows
 
+**Usage limits panel** (always visible)
+- Estimated spend for the current billing period vs your plan limit
+- Progress bar + % used, next reset date
+
 **Overview tab**
 - Sessions, messages, total tokens, active days
-- Current and longest daily streaks
-- Peak coding hour, favourite model
-- Activity heatmap (7d / 30d / all-time)
+- Tokens today, avg tokens per session, avg tokens per day
+- Output % — fraction of tokens that are Claude's responses vs context
+- Current and longest daily streaks, peak coding hour, favourite model
+- Activity heatmap (7d / 30d / all-time) with compact model breakdown
 - Fun comparison: how many times your token usage equals *Pride and Prejudice*
 
 **Models tab**
-- Per-model token and message breakdown with relative bar chart
+- Per-model cost estimate, token bar with input/output gradient split
+- Input and output token counts per model, message count
 
-**Usage limits panel**
-- Estimated spend for the current billing period vs your plan limit
-- Days until next reset
+**Projects tab**
+- Per-repo token usage, sessions, and estimated cost
+- Sorted by token consumption; worktree sessions grouped under parent project
 
 ## How the cost estimate works
 
@@ -97,11 +103,12 @@ Click the menu-bar icon to open the popup. The app reads `~/.claude/projects/**/
 
 | Shortcut | Action |
 |----------|--------|
-| `←` `↑`  | Switch to Overview tab |
-| `→` `↓`  | Switch to Models tab |
-| `O`      | Switch to Overview tab |
-| `M`      | Switch to Models tab |
-| `1` `2` `3` | Switch time window (7d / 30d / All) |
+| `←` `↑`  | Previous tab |
+| `→` `↓`  | Next tab |
+| `O`      | Overview tab |
+| `M`      | Models tab |
+| `P`      | Projects tab |
+| `1` `2` `3` | Switch time window (All / 30d / 7d) |
 | `Esc`    | Close popup |
 
 Use the time window buttons to scope stats to the last 7 days, 30 days, or all time. Billing-period spend is always calculated from the full history regardless of the selected window.
@@ -114,7 +121,7 @@ A Raycast Script Command is included in `raycast/claude-stats.sh`. It toggles th
 
 1. Open Raycast → Settings → Extensions → Script Commands → Add Directory
 2. Point it at the `raycast/` folder in this repo (or wherever you cloned it)
-3. The command "Claude Stats" will appear — assign a hotkey if you want instant access
+3. The command "Toggle Claude Stats Open/Close" will appear — assign a hotkey for instant access
 
 The script uses the `claudestats://toggle` URL scheme registered by the app. The app must be running (it has no dock icon — launch it once from `/Applications` and it lives in the menu bar).
 
