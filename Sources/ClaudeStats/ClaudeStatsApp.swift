@@ -29,6 +29,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingToggle = false
 
     func applicationDidFinishLaunching(_ note: Notification) {
+        // Single-instance guard: quit if another copy is already running
+        let bundleID = Bundle.main.bundleIdentifier ?? "com.joangil.claudestats"
+        if NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).count > 1 {
+            NSApp.terminate(nil)
+            return
+        }
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             button.image = Self.menuIcon
